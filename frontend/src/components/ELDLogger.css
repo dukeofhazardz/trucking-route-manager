@@ -1,0 +1,21 @@
+.eld-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  justify-items: center;
+  margin-left: 30px;
+}
+
+.eld-title {
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+
+.eld-totals {
+  margin-top: 4.5rem;
+  font-family: monospace;
+  font-size: 0.87rem;
+  min-width: 120px;
+  line-height: 1.8;
+}

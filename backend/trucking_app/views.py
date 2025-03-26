@@ -5,6 +5,7 @@ import requests  # For making HTTP requests to OSRM
 from .models import Trip, DailyLog, Status
 from .serializers import TripSerializer, DailyLogSerializer, StatusSerializer
 from django.utils import timezone
+from datetime import datetime, timedelta
 
 
 class TripViewSet(viewsets.ModelViewSet):
@@ -33,7 +34,7 @@ class TripViewSet(viewsets.ModelViewSet):
         Status.objects.create(
             trip=trip,
             status='off_duty',  # Default initial status
-            timestamp=timezone.now()
+            time=timezone.now()
         )
         
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -110,13 +111,40 @@ class DriverStatusViewSet(viewsets.ModelViewSet):
         # Get statuses for the current day
         today = timezone.now().date()
         queryset = self.queryset.filter(
-            timestamp__date=today
-        ).order_by('timestamp')
+            time__date=today
+        ).order_by('time')
         
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
     
     def create(self, request):
+        new_status = request.data.get("status")
+        new_time = datetime.fromisoformat(request.data.get("time").replace("Z", "+00:00"))
+
+        # if new_time.tzinfo is None:
+        #     new_time = timezone.make_aware(new_time)
+        
+        # Define 8-day period
+        eight_days_ago = datetime.now() - timedelta(days=8)
+
+        # Fetch logs within the last 8 days
+        logs = Status.objects.filter(time__gte=eight_days_ago)
+
+        # Calculate total driving + on-duty hours in the last 8 days
+        total_seconds = 0
+        for i in range(len(logs) - 1):
+            if logs[i].status in ["driving", "on_duty"]:
+                time_diff = (logs[i + 1].time - logs[i].time).total_seconds()
+                total_seconds += time_diff
+
+        total_hours = total_seconds / 3600  # Convert to hours
+
+        # If adding this new status exceeds 70 hours, reject it
+        if total_hours >= 70 and new_status in ["driving", "on_duty"]:
+            return Response(
+                {"error": "70-hour limit reached for the past 8 days."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         # Validate and save new status
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -130,5 +158,5 @@ class DriverStatusViewSet(viewsets.ModelViewSet):
     def validate_status_time(self, validated_data):
         # Custom validation logic for status times
         existing_statuses = self.queryset.filter(
-            timestamp__date=validated_data['timestamp'].date()
+            time__date=validated_data['time'].date()
         )

@@ -38,11 +38,11 @@ class Status(models.Model):
     ]
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES)
-    timestamp = models.DateTimeField(default=timezone.now)
+    time = models.DateTimeField(default=timezone.now)
 
     class Meta:
-        ordering = ['timestamp']
-        unique_together = ['trip', 'timestamp']
+        ordering = ['time']
+        unique_together = ['trip', 'time']
 
 
 class DailyLog(models.Model):
