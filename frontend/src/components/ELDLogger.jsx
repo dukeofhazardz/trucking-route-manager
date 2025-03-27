@@ -186,37 +186,35 @@ const ELDStatusLogger = () => {
   return (
     <>
       <div className="eld-container">
-        <div>
-          <h2 className="eld-title">ELD Days of Service Logger</h2>
+        <h2 className="eld-title">ELD Status Logger</h2>
+        <div className="logger">
           <div ref={plotRef} />
+          <div ref={totalsRef} className="eld-totals" />
         </div>
-        <div ref={totalsRef} className="eld-totals" />
-      </div>
-      <form onSubmit={handleStatusUpdate} className="eld-form">
-        <label>
-          Update Status:
-          <select
-            value={newStatus}
-            onChange={(e) => setNewStatus(e.target.value)}
-          >
-            <option value="Off Duty">Off Duty</option>
-            <option value="Sleeper Berth">Sleeper Berth</option>
-            <option value="Driving">Driving</option>
-            <option value="On Duty">On Duty</option>
-          </select>
-        </label>
-        <label>
-          Select Time:
-          <input
-            type="datetime-local"
-            value={selectedTime}
-            onChange={(e) => setSelectedTime(e.target.value)}
-            required
-          />
-        </label>
 
-        <button type="submit">Submit</button>
-      </form>
+        <form onSubmit={handleStatusUpdate} className="eld-form">
+          <label>
+            Select Status:
+            <select
+              value={newStatus}
+              onChange={(e) => setNewStatus(e.target.value)}
+            >
+              <option value="Off Duty">Off Duty</option>
+              <option value="Sleeper Berth">Sleeper Berth</option>
+            </select>
+          </label>
+          <label>
+            Select Time:
+            <input
+              type="datetime-local"
+              value={selectedTime}
+              onChange={(e) => setSelectedTime(e.target.value)}
+              required
+            />
+          </label>
+          <button type="submit">Update Status</button>
+        </form>
+      </div>
     </>
   );
 };

@@ -1,15 +1,13 @@
-import { useState } from 'react'
-import ELDStatusLogger from './components/ELDLogger'
+import ELDStatusLogger from "./components/ELDLogger";
+import TripRoutePlanner from "./components/TripRoutePlanner";
 
 function App() {
-
   return (
     <>
-    <div className='pt-3'>
+      <TripRoutePlanner />
       <ELDStatusLogger />
-    </div>
     </>
-  )
+  );
 }
 
-export default App
+export default App;
