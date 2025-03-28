@@ -1,23 +1,8 @@
 from django.db import models
-from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db.models import Sum
-from datetime import timedelta
+from datetime import timedelta, datetime
 
-class Driver(models.Model):
-    """
-    Represents a professional driver with additional tracking capabilities.
-    """
-    first_name = models.CharField(max_length=100)
-    last_name = models.CharField(max_length=100)
-    license_number = models.CharField(max_length=50, unique=True)
-    
-    @property
-    def full_name(self):
-        return f"{self.first_name} {self.last_name}"
-    
-    def __str__(self):
-        return self.full_name
 
 class StatusLog(models.Model):
     """
@@ -29,44 +14,29 @@ class StatusLog(models.Model):
         ('on_duty', 'On Duty'),
         ('off_duty', 'Off Duty'),
     ]
-    
-    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='status_logs')
+
     status = models.CharField(max_length=20, choices=STATUS_CHOICES)
-    start_time = models.DateTimeField(default=timezone.now)
+    time = models.DateTimeField(default=datetime.now())
     end_time = models.DateTimeField(null=True, blank=True)
     duration = models.DurationField(null=True, blank=True)
     
     class Meta:
-        ordering = ['-start_time']
+        ordering = ['-time']
         
     def save(self, *args, **kwargs):
         # Automatically calculate duration when end_time is set
-        if self.start_time and self.end_time:
-            self.duration = self.end_time - self.start_time
-        
-        # Ensure no overlapping status logs
-        existing_log = StatusLog.objects.filter(
-            driver=self.driver, 
-            end_time=None
-        ).exclude(pk=self.pk).first()
-        
-        if existing_log:
-            existing_log.end_time = self.start_time
-            existing_log.save()
+        if self.time and self.end_time:
+            if hasattr(self.time, 'tzinfo'):
+                self.time = self.time.replace(tzinfo=None)
+            if hasattr(self.end_time, 'tzinfo'):
+                self.end_time = self.end_time.replace(tzinfo=None)
+            self.duration = self.end_time - self.time
         
         super().save(*args, **kwargs)
     
     def __str__(self):
-        return f"{self.driver.full_name} - {self.get_status_display()} ({self.start_time})"
+        return f"{self.get_status_display()} ({self.time})"
 
-class Vehicle(models.Model):
-    """
-    Represents a commercial vehicle with tracking capabilities.
-    """
-    license_plate = models.CharField(max_length=20)
-    
-    def __str__(self):
-        return f"({self.license_plate})"
 
 class Trip(models.Model):
     """
@@ -76,14 +46,11 @@ class Trip(models.Model):
         ('70_8', '70 Hours / 8 Days'),
         ('60_7', '60 Hours / 7 Days'),
     ]
-    
-    driver = models.ForeignKey(Driver, on_delete=models.CASCADE)
-    vehicle = models.ForeignKey(Vehicle, on_delete=models.CASCADE)
-    
-    start_location = models.CharField(max_length=255)
-    destination = models.CharField(max_length=255)
-    
-    start_time = models.DateTimeField(default=timezone.now)
+    start_latitude = models.CharField(max_length=255)
+    start_longitude = models.CharField(max_length=255)
+    destination_latitude = models.CharField(max_length=255)
+    destination_longitude = models.CharField(max_length=255)
+    start_time = models.DateTimeField(default=datetime.now())
     end_time = models.DateTimeField(null=True, blank=True)
     
     cycle_type = models.CharField(
@@ -112,9 +79,8 @@ class Trip(models.Model):
         """
         # Calculate hours from status logs within this trip
         status_logs = StatusLog.objects.filter(
-            driver=self.driver,
             start_time__gte=self.start_time,
-            end_time__lte=self.end_time or timezone.now()
+            end_time__lte=self.end_time or datetime.now()
         )
         
         driving_duration = status_logs.filter(status='driving').aggregate(
@@ -130,18 +96,15 @@ class Trip(models.Model):
         self.save()
     
     def __str__(self):
-        return f"Trip by {self.driver.full_name} from {self.start_location} to {self.destination}"
+        return f"Trip from {self.start_location} to {self.destination}"
 
 class DailyLog(models.Model):
     """
     Comprehensive daily log with detailed tracking and validation.
     """
-    driver = models.ForeignKey(Driver, on_delete=models.CASCADE)
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE)
-    date = models.DateField(default=timezone.now)
-    
-    vehicle = models.ForeignKey(Vehicle, on_delete=models.CASCADE)
-    
+    date = models.DateField(default=datetime.now())
+
     driving_hours = models.FloatField(default=0)
     on_duty_hours = models.FloatField(default=0)
     off_duty_hours = models.FloatField(default=0)
@@ -169,7 +132,6 @@ class DailyLog(models.Model):
         
         # Automatically calculate hours from trip and status logs
         status_logs = StatusLog.objects.filter(
-            driver=self.driver,
             start_time__date=self.date
         )
         
@@ -192,4 +154,4 @@ class DailyLog(models.Model):
         super().save(*args, **kwargs)
     
     def __str__(self):
-        return f"Daily Log for {self.driver.full_name} on {self.date}"
+        return f"Daily Log for {self.date}"

@@ -11,8 +11,6 @@ import L from "leaflet";
 import axios from "axios";
 import "leaflet/dist/leaflet.css";
 import currentIconSrc from "../assets/map-pin-icon.svg";
-import pickupIconSrc from "../assets/map-pin-icon.svg";
-import dropoffIconSrc from "../assets/map-pin-icon.svg";
 import "./TripRoutePlanner.css";
 
 const BASE_URL = "http://localhost:8000";
@@ -32,6 +30,7 @@ const TripRoutePlanner = () => {
     pickup: null,
     dropoff: null,
   });
+  const [waypoints, setWaypoints] = useState([]);
   const [routeCoordinates, setRouteCoordinates] = useState([]);
   const [routeDetails, setRouteDetails] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -67,19 +66,33 @@ const TripRoutePlanner = () => {
             : null,
         }
       );
-
       const routeData = response.data;
       setRouteDetails(routeData);
+
+      // Extracting polyline coordinates
       const coordinates =
-        routeData.route_details.routes[0].geometry.coordinates.map((coord) => [
-          coord[1],
-          coord[0],
-        ]);
+        routeData.route_details.routes && routeData.route_details.routes.length > 0
+          ? routeData.route_details.routes?.[0]?.geometry?.coordinates?.map((coord) => [
+              coord[1],
+              coord[0],
+            ]) || []
+          : [];
       setRouteCoordinates(coordinates);
 
-      if (mapRef.current) {
+      // Extracting waypoints
+      const extractedWaypoints = routeData.waypoints.map((wp, index) => ({
+        id: index,
+        name: wp.name,
+        latitude: wp.location[1],
+        longitude: wp.location[0],
+      }));
+      setWaypoints(extractedWaypoints);
+      console.log(routeData.waypoints, extractedWaypoints, waypoints);
+
+      if (mapRef.current && coordinates.length > 0) {
         const map = mapRef.current;
-        map.fitBounds(coordinates);
+        const bounds = L.latLngBounds(coordinates);
+        map.fitBounds(bounds);
       }
     } catch (error) {
       console.error("Route calculation error:", error);
@@ -147,6 +160,16 @@ const TripRoutePlanner = () => {
             />
             <LocationSetter />
 
+            {waypoints.map((wp) => (
+              <Marker
+                key={wp.id}
+                position={[wp.latitude, wp.longitude]}
+                icon={createCustomIcon(currentIconSrc)}
+              >
+                <Popup>{wp.name || "Waypoint"}</Popup>
+              </Marker>
+            ))}
+
             {Object.entries(locations).map(([key, value]) =>
               value ? (
                 <Marker
@@ -161,12 +184,15 @@ const TripRoutePlanner = () => {
               ) : null
             )}
 
-            {routeCoordinates.length > 0 && (
+            {Object.values(locations).filter(Boolean).length > 1 && (
               <Polyline
-                positions={routeCoordinates}
-                color="blue"
-                weight={5}
-                opacity={0.7}
+                positions={Object.values(locations)
+                  .filter(Boolean) // Remove null values
+                  .map((loc) => [loc.latitude, loc.longitude])}
+                color="red"
+                weight={4}
+                opacity={0.8}
+                dashArray="5,10"
               />
             )}
           </MapContainer>

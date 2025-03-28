@@ -68,3 +68,10 @@
 .eld-form button:hover {
   background-color: #2393dd;
 }
+
+.error-message {
+  color: red;
+  font-size: 12px;
+  margin-top: 5px;
+  font-weight: 500;
+}

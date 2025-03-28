@@ -11,9 +11,18 @@ const ELDStatusLogger = () => {
   const totalsRef = useRef(null);
   const [data, setData] = useState([]); // Store ELD log data
   const [newStatus, setNewStatus] = useState("Off Duty"); // For status update
-  const [selectedTime, setSelectedTime] = useState(
-    new Date().toISOString().slice(0, 16)
-  );
+  const [error, setError] = useState(null);
+  const [selectedTime, setSelectedTime] = useState(() => {
+    const now = new Date();
+    // Format as YYYY-MM-DDTHH:MM in local time
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  });
 
   const statusChoices = {
     sleeper_berth: "Sleeper Berth",
@@ -31,11 +40,13 @@ const ELDStatusLogger = () => {
 
   const fetchData = async () => {
     try {
-      const response = await axios.get(`${BASE_URL}/api/status/`);
+      const response = await axios.get(`${BASE_URL}/api/status-logs/`);
       const resolvedData = resolveData(response.data);
       setData(resolvedData);
+      setError(null);
     } catch (error) {
       console.error("Error fetching data:", error);
+      setError("Could not fetch status logs. Please try again.");
     }
   };
 
@@ -48,26 +59,37 @@ const ELDStatusLogger = () => {
 
     const domain = ["Off Duty", "Sleeper Berth", "Driving", "On Duty"];
 
+    const cleanedData = data.map((d) => {
+      // Force status to match domain (case-sensitive)
+      const matchedStatus =
+        domain.find((item) => item.toLowerCase() === d.status.toLowerCase()) ||
+        domain[0]; // Fallback to "Off Duty"
+
+      return {
+        ...d,
+        status: matchedStatus, // Use the exact domain string
+      };
+    });
+
+    // Get the start of the local day
     const now = new Date();
     const startOfDay = new Date(
-      Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-        0,
-        0,
-        0
-      )
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0,
+      0,
+      0
     );
+
+    // Get the end of the local day
     const endOfDay = new Date(
-      Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate() + 1,
-        0,
-        0,
-        0
-      )
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + 1,
+      0,
+      0,
+      0
     );
 
     const thirty = d3.timeHours(startOfDay, endOfDay, 1); // Hourly markers
@@ -92,11 +114,11 @@ const ELDStatusLogger = () => {
       marginRight: 40,
       x: {
         type: "time",
-        domain: [startOfDay, endOfDay], // Force UTC
+        domain: [startOfDay, endOfDay],
         axis: "top",
         ticks: d3.timeHour.every(1),
         tickFormat: (d) => {
-          const hour = d3.utcFormat("%H")(d);
+          const hour = d3.timeFormat("%H")(d);
           if (hour === "00") return "Midnight";
           if (hour === "12") return "Noon";
           return hour;
@@ -122,7 +144,7 @@ const ELDStatusLogger = () => {
           }
         ),
         // data line
-        Plot.line(data, {
+        Plot.line(cleanedData, {
           x: "time",
           y: "status",
           curve: "step-after",
@@ -158,34 +180,60 @@ const ELDStatusLogger = () => {
 
   const handleStatusUpdate = async (event) => {
     event.preventDefault();
+    setError(null);
     try {
-      const response = await axios.post(`${BASE_URL}/api/status/`, {
-        status: statusChoicesReverse[newStatus],
-        time: new Date(selectedTime).toISOString(), // Use user-selected time
-        trip: 1, // Default
-      });
+      // Format the time string to match local time without timezone conversion
+      const localDate = selectedTime.replace("T", " ") + ":00";
 
-      if (response.status === 200) {
-        await fetchData();
-      }
+      // Create optimistic update in the same format as server response
+      const optimisticEntry = {
+        status: statusChoicesReverse[newStatus],
+        time: localDate,
+      };
+
+      // Optimistically update with resolved data
+      setData((prevData) => [
+        ...prevData,
+        {
+          ...optimisticEntry,
+          status: newStatus, // Convert to display format
+          time: new Date(localDate), // Convert to Date object
+        },
+      ]);
+
+      const response = await axios.post(
+        `${BASE_URL}/api/status-logs/`,
+        optimisticEntry
+      );
     } catch (error) {
       console.error("Error updating status:", error);
+      setError("Failed to update status. Please try again.");
+      fetchData();
     }
   };
 
   const resolveData = (data) => {
     if (!Array.isArray(data)) return [];
 
-    return data.map((d) => ({
-      ...d,
-      time: new Date(d.time).toISOString().slice(0, 16) + "Z",
-      status: statusChoices[d.status],
-    }));
+    return data.map((d) => {
+      // Handle both server response format and optimistic update format
+      const status =
+        typeof d.status === "string"
+          ? statusChoices[d.status] || d.status
+          : d.status;
+
+      return {
+        ...d,
+        time: new Date(d.time),
+        status: status,
+      };
+    });
   };
 
   return (
     <>
       <div className="eld-container">
+        {error && <div className="error-message">{error}</div>}
         <h2 className="eld-title">ELD Status Logger</h2>
         <div className="logger">
           <div ref={plotRef} />
@@ -201,6 +249,8 @@ const ELDStatusLogger = () => {
             >
               <option value="Off Duty">Off Duty</option>
               <option value="Sleeper Berth">Sleeper Berth</option>
+              <option value="On Duty">On Duty</option>
+              <option value="Driving">Driving</option>
             </select>
           </label>
           <label>

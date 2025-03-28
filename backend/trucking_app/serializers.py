@@ -1,24 +1,6 @@
 from rest_framework import serializers
-from .models import Driver, Vehicle, Trip, DailyLog, StatusLog
+from .models import Trip, DailyLog, StatusLog
 
-
-class DriverSerializer(serializers.ModelSerializer):
-    full_name = serializers.ReadOnlyField()
-    
-    class Meta:
-        model = Driver
-        fields = [
-            'id', 'first_name', 'last_name', 'license_number', 
-            'full_name'
-        ]
-        extra_kwargs = {
-            'license_number': {'validators': []},  # Disable unique validation
-        }
-
-class VehicleSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Vehicle
-        fields = '__all__'
 
 class StatusLogSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(
@@ -59,8 +41,3 @@ class DailyLogSerializer(serializers.ModelSerializer):
             'off_duty_hours': {'read_only': True},
             'sleeper_berth_hours': {'read_only': True},
         }
-
-class StatusSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = StatusLog
-        fields = '__all__'
