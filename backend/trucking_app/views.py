@@ -55,7 +55,9 @@ class TripViewSet(viewsets.ModelViewSet):
                 )
             
             route_data = response.json()
-            
+            total_distance_km = route_data['routes'][0]['distance'] / 1000,
+            total_duration_hours = route_data['routes'][0]['duration'] / 3600,
+
             # New trip
             trip_data = {
                 "start_latitude": current_location[0],
@@ -64,6 +66,8 @@ class TripViewSet(viewsets.ModelViewSet):
                 "destination_longitude": dropoff_location[1],
                 "start_time": datetime.now(),
                 "end_time": datetime.now() + timedelta(seconds=route_data['routes'][0]['duration']),
+                "total_distance_km": total_distance_km,
+                "total_duration_hours": total_duration_hours,
             }
             serializer = self.get_serializer(data=trip_data)
             serializer.is_valid(raise_exception=True)
@@ -71,8 +75,8 @@ class TripViewSet(viewsets.ModelViewSet):
 
             return Response({
                 'route_details': route_data,
-                'total_distance_km': route_data['routes'][0]['distance'] / 1000,
-                'total_duration_hours': route_data['routes'][0]['duration'] / 3600,
+                'total_distance_km': total_distance_km,
+                'total_duration_hours': total_duration_hours,
                 'waypoints': route_data['waypoints']
             })
         
@@ -151,7 +155,19 @@ class DailyLogViewSet(viewsets.ModelViewSet):
     def create(self, request):
         # Validate daily log data
         try:
-            serializer = self.get_serializer(data=request.data)
+            trips_today = Trip.objects.filter(
+                start_time__date=datetime.now().date()
+            ).exists()
+            trip_ids = [trip.id for trip in trips_today]
+            if not trip_ids:
+                return Response(
+                    {"error": "No trips found for today."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            data = request.data.copy()
+            data['trip'] = trip_ids
+            serializer = self.get_serializer(data=data)
             serializer.is_valid(raise_exception=True)
             self.perform_create(serializer)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -169,4 +185,28 @@ class DailyLogViewSet(viewsets.ModelViewSet):
         ).order_by('date')
         
         serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    def generate_daily_log(self, request):
+        # Generate daily log for the current day
+        today = datetime.now().date()
+        daily_logs = self.queryset.filter(
+            date=today
+        ).first()
+        
+        if not daily_logs.exists():
+            return Response(
+                {"error": "No daily logs found for today."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = self.get_serializer(daily_logs, many=True)
+        serializer['name'] = 'Daily Log for ' + str(today)
+        serializer['vehicle_license_number']  = 'ABC1234'
+        serializer['from'] = 'Location A'
+        serializer['to'] = 'Location B'
+        serializer['name_of_carriers'] = 'Property carrier'
+        serializer['main_office_address'] = '123 Main St, City, State, Zip'
+        serializer['home_terminal_address'] = '456 Elm St, City, State, Zip'
+        serializer['driver_name'] = 'John Doe'
         return Response(serializer.data)

@@ -16,7 +16,7 @@ class StatusLog(models.Model):
     ]
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES)
-    time = models.DateTimeField(default=datetime.now())
+    time = models.DateTimeField(default=datetime.now)
     end_time = models.DateTimeField(null=True, blank=True)
     duration = models.DurationField(null=True, blank=True)
     
@@ -35,7 +35,7 @@ class StatusLog(models.Model):
         super().save(*args, **kwargs)
     
     def __str__(self):
-        return f"{self.get_status_display()} ({self.time})"
+        return f"{self.status} at ({self.time})"
 
 
 class Trip(models.Model):
@@ -50,17 +50,18 @@ class Trip(models.Model):
     start_longitude = models.CharField(max_length=255)
     destination_latitude = models.CharField(max_length=255)
     destination_longitude = models.CharField(max_length=255)
-    start_time = models.DateTimeField(default=datetime.now())
+    start_time = models.DateTimeField(default=datetime.now)
     end_time = models.DateTimeField(null=True, blank=True)
+    total_distance_km = models.FloatField(default=0)
+    total_duration_hours = models.FloatField(default=0)
     
     cycle_type = models.CharField(
         max_length=10, 
         choices=CYCLE_CHOICES, 
         default='70_8'
     )
-    
+
     total_driving_hours = models.FloatField(default=0)
-    total_on_duty_hours = models.FloatField(default=0)
     
     def calculate_remaining_hours(self):
         """
@@ -75,40 +76,38 @@ class Trip(models.Model):
     
     def update_hours(self):
         """
-        Automatically update driving and on-duty hours from status logs.
+        Automatically update trip driving duration.
         """
-        # Calculate hours from status logs within this trip
-        status_logs = StatusLog.objects.filter(
-            start_time__gte=self.start_time,
-            end_time__lte=self.end_time or datetime.now()
-        )
-        
-        driving_duration = status_logs.filter(status='driving').aggregate(
-            total_driving=Sum('duration')
-        )['total_driving'] or timedelta()
-        
-        on_duty_duration = status_logs.filter(status='on_duty').aggregate(
-            total_on_duty=Sum('duration')
-        )['total_on_duty'] or timedelta()
-        
-        self.total_driving_hours = driving_duration.total_seconds() / 3600
-        self.total_on_duty_hours = on_duty_duration.total_seconds() / 3600
+        self.total_driving_hours = self.end_time - self.start_time
         self.save()
     
     def __str__(self):
-        return f"Trip from {self.start_location} to {self.destination}"
+        return f"Trip from {self.start_time} to {self.end_time}"
 
 class DailyLog(models.Model):
     """
     Comprehensive daily log with detailed tracking and validation.
     """
-    trip = models.ForeignKey(Trip, on_delete=models.CASCADE)
-    date = models.DateField(default=datetime.now())
-
+    # A daily log can be associated with many trips
+    trip = models.ManyToManyField(
+        Trip,
+        related_name='daily_logs',
+        blank=True,
+        help_text="Trips associated with this daily log"
+        )
+    date = models.DateField(default=datetime.now)
     driving_hours = models.FloatField(default=0)
     on_duty_hours = models.FloatField(default=0)
     off_duty_hours = models.FloatField(default=0)
     sleeper_berth_hours = models.FloatField(default=0)
+    total_miles = models.FloatField(
+        default=0,
+        help_text="Miles driven today"
+    )
+    cumulative_mileage = models.FloatField(
+        default=0,
+        help_text="Total odometer reading"
+    )
     
     def clean(self):
         """
@@ -120,7 +119,7 @@ class DailyLog(models.Model):
             self.off_duty_hours,
             self.sleeper_berth_hours
         ])
-        
+
         if total_hours > 24:
             raise ValidationError("Total daily hours cannot exceed 24 hours")
     
@@ -151,7 +150,36 @@ class DailyLog(models.Model):
             total=Sum('duration')
         )['total'].total_seconds() / 3600 if status_logs else 0
         
+        # Update mileage before saving
+        is_new = self._state.adding
+        if not is_new:  # Only update mileage for existing logs
+            self.update_mileage()
+            
         super().save(*args, **kwargs)
+        
+        if is_new:  # Update mileage after initial save for new logs
+            self.update_mileage()
+
+    def update_mileage(self):
+        """
+        Update both daily miles and cumulative mileage.
+        """
+        # Calculate today's miles from associated trips
+        today_trips = self.trip.filter(start_time__date=self.date)
+        self.total_miles_today = sum(
+            trip.total_distance_km * 0.621371  # Convert km to miles
+            for trip in today_trips
+        )
+
+        # Calculate cumulative mileage including today
+        previous_log = DailyLog.objects.filter(
+            date__lt=self.date
+        ).order_by('-date').first()
+
+        previous_mileage = previous_log.cumulative_mileage if previous_log else 0
+        self.cumulative_mileage = previous_mileage + self.total_miles_today
+        
+        self.save()
     
     def __str__(self):
         return f"Daily Log for {self.date}"

@@ -3,18 +3,14 @@ from .models import Trip, DailyLog, StatusLog
 
 
 class StatusLogSerializer(serializers.ModelSerializer):
-    status_display = serializers.CharField(
-        source='get_status_display', 
-        read_only=True
-    )
     duration_hours = serializers.SerializerMethodField()
     
     class Meta:
         model = StatusLog
         fields = '__all__'
-    
-    def get_duration_hours(self, obj):
-        return obj.duration.total_seconds() / 3600 if obj.duration else None
+        extra_kwargs = {
+            'duration': {'read_only': True},
+        }
 
 class TripSerializer(serializers.ModelSerializer):
     remaining_hours = serializers.SerializerMethodField()
@@ -25,7 +21,6 @@ class TripSerializer(serializers.ModelSerializer):
         fields = '__all__'
         extra_kwargs = {
             'total_driving_hours': {'read_only': True},
-            'total_on_duty_hours': {'read_only': True},
         }
     
     def get_remaining_hours(self, obj):
@@ -40,4 +35,6 @@ class DailyLogSerializer(serializers.ModelSerializer):
             'on_duty_hours': {'read_only': True},
             'off_duty_hours': {'read_only': True},
             'sleeper_berth_hours': {'read_only': True},
+            'total_miles': {'read_only': True},
+            'cumulative_mileage': {'read_only': True},
         }
