@@ -81,24 +81,7 @@ class TripViewSet(viewsets.ModelViewSet):
                 {"error": str(e)}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-    
-    @action(detail=True, methods=['GET'])
-    def generate_logs(self, request, pk=None):
-        trip = self.get_object()
-        
-        # Generate daily logs
-        logs = []
-        for day in range(1, 4):  # Generate logs for first 3 days
-            log = DailyLog.objects.create(
-                trip=trip,
-                date=trip.start_time.date() + timedelta(days=day-1),
-                driving_hours=11,  # Max allowed driving hours per day
-                on_duty_hours=14,  # Max on-duty hours
-                off_duty_hours=10  # Remaining hours
-            )
-            logs.append(DailyLogSerializer(log).data)
-        
-        return Response(logs)
+
 
 class StatusLogViewSet(viewsets.ModelViewSet):
     queryset = StatusLog.objects.all()
@@ -113,6 +96,18 @@ class StatusLogViewSet(viewsets.ModelViewSet):
         if latest_status:
             latest_status.end_time = datetime.fromisoformat(request.data['time'].replace('Z', ''))
             latest_status.save()
+            
+        # Get today's date and check driving hours
+        today = datetime.now().date()
+        driving_hours = StatusLog.objects.filter(
+            time__date=today,
+            status='driving'
+        ).aggregate(Sum('duration'))['duration__sum'] or timedelta()
+        if driving_hours.total_seconds() / 3600 > 11:
+            return Response(
+                {"error": "Exceeded maximum driving hours for today."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Parse the incoming time string as naive datetime
         try:
@@ -144,6 +139,34 @@ class StatusLogViewSet(viewsets.ModelViewSet):
         queryset = self.queryset.filter(
             time__date=today
         ).order_by('time')
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+
+class DailyLogViewSet(viewsets.ModelViewSet):
+    queryset = DailyLog.objects.all()
+    serializer_class = DailyLogSerializer
+
+    def create(self, request):
+        # Validate daily log data
+        try:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except ValidationError as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    def list(self, request):
+        # Get daily logs for the current day
+        today = datetime.now().date()
+        queryset = self.queryset.filter(
+            date=today
+        ).order_by('date')
         
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
