@@ -3,8 +3,6 @@ from .models import Trip, DailyLog, StatusLog
 
 
 class StatusLogSerializer(serializers.ModelSerializer):
-    duration_hours = serializers.SerializerMethodField()
-    
     class Meta:
         model = StatusLog
         fields = '__all__'
@@ -30,11 +28,3 @@ class DailyLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = DailyLog
         fields = '__all__'
-        extra_kwargs = {
-            'driving_hours': {'read_only': True},
-            'on_duty_hours': {'read_only': True},
-            'off_duty_hours': {'read_only': True},
-            'sleeper_berth_hours': {'read_only': True},
-            'total_miles': {'read_only': True},
-            'cumulative_mileage': {'read_only': True},
-        }

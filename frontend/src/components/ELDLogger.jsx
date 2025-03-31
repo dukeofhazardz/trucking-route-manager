@@ -3,6 +3,9 @@ import * as d3 from "d3";
 import * as Plot from "@observablehq/plot";
 import axios from "axios";
 import "./ELDLogger.css";
+import DailyLogSheet from "./DailyLogSheet";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 
 const BASE_URL = "http://localhost:8000";
 
@@ -12,6 +15,9 @@ const ELDStatusLogger = () => {
   const [data, setData] = useState([]); // Store ELD log data
   const [newStatus, setNewStatus] = useState("Off Duty"); // For status update
   const [error, setError] = useState(null);
+  const [showLogSheet, setShowLogSheet] = useState(false);
+  const logSheetRef = useRef(null);
+  const pdfRef = useRef(null);
   const [selectedTime, setSelectedTime] = useState(() => {
     const now = new Date();
     // Format as YYYY-MM-DDTHH:MM in local time
@@ -230,6 +236,29 @@ const ELDStatusLogger = () => {
     });
   };
 
+  const handleGenerateLog = async () => {
+    try {
+      // Capture the log sheet as an image
+      const canvas = await html2canvas(pdfRef.current);
+      const imgData = canvas.toDataURL("image/png");
+
+      // Create PDF
+      const pdf = new jsPDF("p", "mm", "a4");
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      pdf.save("daily-log.pdf");
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+    }
+  };
+
+  const toggleLogSheet = () => {
+    setShowLogSheet(!showLogSheet);
+  };
+
   return (
     <>
       <div className="eld-container">
@@ -240,30 +269,58 @@ const ELDStatusLogger = () => {
           <div ref={totalsRef} className="eld-totals" />
         </div>
 
-        <form onSubmit={handleStatusUpdate} className="eld-form">
-          <label>
-            Select Status:
-            <select
-              value={newStatus}
-              onChange={(e) => setNewStatus(e.target.value)}
-            >
-              <option value="Off Duty">Off Duty</option>
-              <option value="Sleeper Berth">Sleeper Berth</option>
-              <option value="On Duty">On Duty</option>
-              <option value="Driving">Driving</option>
-            </select>
-          </label>
-          <label>
-            Select Time:
-            <input
-              type="datetime-local"
-              value={selectedTime}
-              onChange={(e) => setSelectedTime(e.target.value)}
-              required
-            />
-          </label>
-          <button type="submit">Update Status</button>
-        </form>
+        <div className="form-area">
+          <form
+            onSubmit={handleStatusUpdate}
+            className="stat-card actions-card eld-form"
+          >
+            <label>
+              Select Status:
+              <select
+                value={newStatus}
+                onChange={(e) => setNewStatus(e.target.value)}
+              >
+                <option value="Off Duty">Off Duty</option>
+                <option value="Sleeper Berth">Sleeper Berth</option>
+                <option value="On Duty">On Duty</option>
+                <option value="Driving">Driving</option>
+              </select>
+            </label>
+            <label>
+              Select Time:
+              <input
+                type="datetime-local"
+                value={selectedTime}
+                onChange={(e) => setSelectedTime(e.target.value)}
+                required
+              />
+            </label>
+            <button type="submit">Update Status</button>
+          </form>
+
+          {/* Quick Actions */}
+          <div className="stat-card actions-card">
+            <h3>Quick Actions</h3>
+            <button className="action-btn" onClick={handleGenerateLog}>
+              Download Today's Log (PDF)
+            </button>
+            <button className="action-btn" onClick={toggleLogSheet}>
+              {showLogSheet ? "Hide Today's Log" : "View Today's Log"}
+            </button>
+          </div>
+        </div>
+      </div>
+      {showLogSheet && (
+        <div ref={logSheetRef}>
+          <DailyLogSheet />
+        </div>
+      )}
+      {/* Hidden log sheet for PDF generation */}
+      <div
+        style={{ position: "absolute", left: "-9999px", top: 0 }}
+        ref={pdfRef}
+      >
+        <DailyLogSheet />
       </div>
     </>
   );

@@ -20,7 +20,8 @@
 .eld-title {
   font-size: 20px;
   margin-bottom: 10px;
-  color: #333;
+  color: #2c3e50;
+  font-size: 1.5rem;
 }
 
 .eld-totals {
@@ -31,12 +32,18 @@
   line-height: 1.5rem;
 }
 
-.eld-form {
-  max-width: 1100;
-  margin: 20px auto;
+.form-area {
   display: flex;
-  flex-direction: row;
-  gap: 20px;
+  justify-content: space-between;
+  gap: 5rem;
+}
+
+/* ELD Form Styles */
+.eld-form {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .eld-form label {
@@ -55,17 +62,40 @@
 }
 
 .eld-form button {
-  padding: 10px;
-  background-color: #3498db;
+  background: #3498db;
   color: white;
   border: none;
-  border-radius: 4px;
+  padding: 10px;
+  margin: 5px 0;
+  border-radius: 5px;
   cursor: pointer;
-  font-weight: bold;
+  transition: background 0.3s ease;
 }
 
 .eld-form button:hover {
   background-color: #2ecc71;
+}
+
+/* Actions Card Styles */
+.actions-card {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+}
+
+.action-btn {
+  background: #3498db;
+  color: white;
+  border: none;
+  padding: 10px;
+  margin: 5px 0;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.action-btn:hover {
+  background: #2980b9;
 }
 
 .error-message {

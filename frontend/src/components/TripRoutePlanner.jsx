@@ -66,8 +66,6 @@ const TripRoutePlanner = () => {
     return null;
   };
 
-  console.log(calculatedRoute.details)
-
   const calculateRoute = async () => {
     const selectedLocations = Object.values(locations).filter(Boolean);
     if (selectedLocations.length < 2) {
@@ -95,6 +93,11 @@ const TripRoutePlanner = () => {
       );
 
       const routeData = response.data;
+      if (routeData.error) {
+        setError(routeData.error);
+        return;
+      }
+      localStorage.setItem("TripID", routeData.trip_id)
 
       // Extract coordinates from GeoJSON response
       const coordinates =
@@ -165,7 +168,7 @@ const TripRoutePlanner = () => {
     <div className="trip-route-planner">
       <div className="planner-container">
         <div className="input-section">
-          <h2>Trip Route Planner</h2>
+          <h1 className="title">Trip Route Planner</h1>
           {error && <div className="error-message">{error}</div>}
 
           <div className="location-selection">
