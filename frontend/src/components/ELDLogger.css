@@ -26,19 +26,19 @@
 }
 
 .eld-totals {
-  font-size: 0.8rem; /* Reduced from 12px to match plot text */
+  font-size: 0.8rem;
   margin-top: 0.5rem;
   font-weight: 500;
   line-height: 1.3;
-  color: #444; /* Softer color to match plot */
+  color: #444;
 }
 
 .form-area {
   display: flex;
-  flex-direction: column; /* Stack vertically by default */
+  flex-direction: column;
   gap: 2rem;
   width: 100%;
-  max-width: 650px; /* Optimal width for forms */
+  max-width: 650px;
 }
 
 /* ELD Form Styles */
@@ -125,14 +125,14 @@
 /* Media query for larger screens */
 @media only screen and (min-width: 768px) {
   .form-area {
-    flex-direction: row; /* Side by side on larger screens */
+    flex-direction: row;
     justify-content: center;
     gap: 3rem;
   }
   
   .eld-form,
   .actions-card {
-    width: 300px; /* Fixed width on desktop */
+    width: 300px;
   }
 }
 
@@ -149,7 +149,7 @@
   position: absolute;
   left: -9999px;
   top: 0;
-  width: 210mm; /* A4 width */
+  width: 210mm;
   background: white;
   padding: 20px;
 }
