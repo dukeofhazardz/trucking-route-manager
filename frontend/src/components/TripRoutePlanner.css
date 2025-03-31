@@ -30,6 +30,8 @@
 .map-section {
   flex: 2;
   overflow: hidden;
+  height: 600px;
+  min-height: 400px;
 }
 
 .selection-buttons {
@@ -96,23 +98,6 @@
     transform: rotate(360deg);
   }
 }
-/* 
-.route-details {
-  padding: 15px;
-  border-radius: 8px;
-  margin-top: 20px;
-}
-
-.detail-grid {
-  display: flex;
-  justify-content: space-around;
-  align-items: flex-start;
-  justify-items: start;
-}
-
-.detail-item {
-  text-align: center;
-} */
 
 .route-details {
   background: #f8f9fa;
@@ -236,4 +221,37 @@ button:disabled {
 
 .custom-icon-orange {
   filter: hue-rotate(40deg) saturate(5);
+}
+
+
+/* Responsive styles */
+@media only screen and (max-width: 768px) {
+  .planner-container {
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .input-section,
+  .map-section {
+    width: 100%;
+    flex: none;
+  }
+
+  .map-section {
+    height: 400px;
+    order: 2;
+    margin-top: 20px;
+  }
+
+  .input-section {
+    order: 1;
+    padding: 20px;
+  }
+}
+
+/* Further adjustments for very small screens */
+@media only screen and (max-width: 480px) {
+  .map-section {
+    height: 300px;
+  }
 }
