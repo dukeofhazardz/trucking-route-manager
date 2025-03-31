@@ -5,26 +5,32 @@ from rest_framework.exceptions import ValidationError
 from django.db.models import Sum
 from datetime import datetime, timedelta
 import requests
-
+import os
 from .models import Trip, DailyLog, StatusLog
 from .serializers import (
     TripSerializer, 
     DailyLogSerializer, 
     StatusLogSerializer
 )
+import openrouteservice as ors
+from openrouteservice.directions import directions
+import folium
 
+
+OPENROUTESERVICE_API_KEY = os.getenv('OPENROUTESERVICE_API_KEY')
 
 class TripViewSet(viewsets.ModelViewSet):
     queryset = Trip.objects.all()
     serializer_class = TripSerializer
 
+
     @action(detail=False, methods=['POST'])
     def calculate_route(self, request):
         try:
             # Extract coordinates
-            current_location = request.data.get('current_location')
-            pickup_location = request.data.get('pickup_location')
-            dropoff_location = request.data.get('dropoff_location')
+            current_location = request.data.get('current_location')  # [lon, lat]
+            pickup_location = request.data.get('pickup_location')    # [lon, lat]
+            dropoff_location = request.data.get('dropoff_location')  # [lon, lat]
             
             # Validate coordinates
             if not all([current_location, pickup_location, dropoff_location]):
@@ -33,51 +39,110 @@ class TripViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Format coordinates for OSRM
-            def format_coords(location):
-                return f"{location[1]},{location[0]}"
+            # Initialize ORS client
+            ors_client = ors.Client(key=OPENROUTESERVICE_API_KEY)
             
-            waypoints = [
-                format_coords(current_location),
-                format_coords(pickup_location),
-                format_coords(dropoff_location)
+            # Define waypoints in ORS format (lon, lat)
+            coordinates = [
+                current_location,
+                pickup_location,
+                dropoff_location
             ]
             
-            # Call OSRM routing service
-            osrm_url = "http://router.project-osrm.org/route/v1/driving/"
-            coordinates = ";".join(waypoints)
-            response = requests.get(f"{osrm_url}{coordinates}?overview=full&steps=true")
+            # Calculate route with driving profile (remove optimize_waypoints)
+            route = directions(
+                client=ors_client,
+                coordinates=coordinates,
+                profile='driving-car',
+                format='geojson',
+                instructions=True,
+            )
             
-            if response.status_code != 200:
-                return Response(
-                    {"error": "Route calculation failed"}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            # Extract route information
+            total_distance = route['features'][0]['properties']['summary']['distance'] / 1000  # km
+            total_duration = route['features'][0]['properties']['summary']['duration'] / 3600  # hours
             
-            route_data = response.json()
-            total_distance_km = route_data['routes'][0]['distance'] / 1000,
-            total_duration_hours = route_data['routes'][0]['duration'] / 3600,
-
-            # New trip
+            # Create Folium map centered on start point
+            m = folium.Map(
+                location=[current_location[1], current_location[0]],
+                zoom_start=12,
+                tiles='cartodbpositron'
+            )
+            
+            # Add route to map
+            folium.GeoJson(
+                route,
+                name='Route',
+                style_function=lambda x: {
+                    'color': '#4285F4',
+                    'weight': 5,
+                    'opacity': 0.8
+                }
+            ).add_to(m)
+            
+            # Add markers for waypoints
+            waypoint_names = ['Current Location', 'Pickup', 'Dropoff']
+            for i, (coord, name) in enumerate(zip(coordinates, waypoint_names)):
+                folium.Marker(
+                    location=[coord[1], coord[0]],
+                    popup=f"<b>{name}</b>",
+                    icon=folium.Icon(
+                        color='red' if i == 0 else 'green' if i == 1 else 'blue',
+                        icon='truck' if i == 0 else 'industry' if i == 1 else 'flag'
+                    )
+                ).add_to(m)
+            
+            # Calculate rest stops (every 4 hours of driving)
+            rest_stops = []
+            if total_duration > 4:
+                # Get detailed steps for the full route
+                for step in route['features'][0]['properties']['segments'][0]['steps']:
+                    if 'duration' in step and 'distance' in step:
+                        rest_stops.append({
+                            'location': step['way_points'][-1],
+                            'duration': step['duration'],
+                            'distance': step['distance']
+                        })
+                
+                # Filter to get stops approximately every 4 hours
+                filtered_rest_stops = []
+                cumulative_time = 0
+                rest_threshold = 4 * 3600  # 4 hours in seconds
+                
+                for stop in rest_stops:
+                    cumulative_time += stop['duration']
+                    if cumulative_time >= rest_threshold:
+                        filtered_rest_stops.append(stop)
+                        cumulative_time = 0
+                
+                rest_stops = filtered_rest_stops
+            
+            # Save map to HTML string
+            map_html = m._repr_html_()
+            
+            # Create new trip record
             trip_data = {
-                "start_latitude": current_location[0],
-                "start_longitude": current_location[1],
-                "destination_latitude": dropoff_location[0],
-                "destination_longitude": dropoff_location[1],
+                "start_latitude": current_location[1],
+                "start_longitude": current_location[0],
+                "destination_latitude": dropoff_location[1],
+                "destination_longitude": dropoff_location[0],
                 "start_time": datetime.now(),
-                "end_time": datetime.now() + timedelta(seconds=route_data['routes'][0]['duration']),
-                "total_distance_km": total_distance_km,
-                "total_duration_hours": total_duration_hours,
+                "end_time": datetime.now() + timedelta(seconds=total_duration*3600),
+                "total_distance_km": total_distance,
+                "total_duration_hours": total_duration,
             }
             serializer = self.get_serializer(data=trip_data)
             serializer.is_valid(raise_exception=True)
             trip = serializer.save()
-
+            
             return Response({
-                'route_details': route_data,
-                'total_distance_km': total_distance_km,
-                'total_duration_hours': total_duration_hours,
-                'waypoints': route_data['waypoints']
+                'route_geojson': route,
+                'total_distance_km': total_distance,
+                'total_duration_hours': total_duration,
+                'waypoints': coordinates,
+                'rest_stops': rest_stops,
+                'map_html': map_html,
+                'trip_id': trip.id
             })
         
         except Exception as e:
@@ -85,7 +150,6 @@ class TripViewSet(viewsets.ModelViewSet):
                 {"error": str(e)}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
 
 class StatusLogViewSet(viewsets.ModelViewSet):
     queryset = StatusLog.objects.all()
