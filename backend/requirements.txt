@@ -3,3 +3,9 @@ django-cors-headers
 djangorestframework
 openrouteservice
 folium
+geopy
+gunicorn
+psycopg2-binary
+dj-database-url
+whitenoise
+python-dotenv

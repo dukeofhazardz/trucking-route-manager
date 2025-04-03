@@ -7,7 +7,7 @@ import DailyLogSheet from "./DailyLogSheet";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
-const BASE_URL = "http://localhost:8000";
+const BASE_URL = "https://gleaming-compassion-production.up.railway.app";
 
 const ELDStatusLogger = () => {
   const plotRef = useRef(null);
@@ -66,18 +66,16 @@ const ELDStatusLogger = () => {
     const domain = ["Off Duty", "Sleeper Berth", "Driving", "On Duty"];
 
     const cleanedData = data.map((d) => {
-      // Force status to match domain (case-sensitive)
       const matchedStatus =
         domain.find((item) => item.toLowerCase() === d.status.toLowerCase()) ||
         domain[0]; // Fallback to "Off Duty"
 
       return {
         ...d,
-        status: matchedStatus, // Use the exact domain string
+        status: matchedStatus,
       };
     });
 
-    // Get the start of the local day
     const now = new Date();
     const startOfDay = new Date(
       now.getFullYear(),
@@ -88,7 +86,6 @@ const ELDStatusLogger = () => {
       0
     );
 
-    // Get the end of the local day
     const endOfDay = new Date(
       now.getFullYear(),
       now.getMonth(),
@@ -103,7 +100,6 @@ const ELDStatusLogger = () => {
 
     const dayExtent = d3.extent(data.map((d) => new Date(d.time)));
 
-    // Calculate time totals for each status
     const statusTotals = {};
     for (let i = 0; i < data.length - 1; i++) {
       const currentStatus = data[i].status;
@@ -135,7 +131,7 @@ const ELDStatusLogger = () => {
       y: { domain, tickSize: 0, label: null },
       marks: [
         Plot.frame(),
-        // time ticks every 15 and 30 minutes
+        // time will tick every 15 and 30 minutes
         Plot.tickX(
           thirty.flatMap((time) => domain.map((status) => ({ time, status }))),
           { x: "time", y: "status", strokeWidth: 0.25 }
@@ -149,7 +145,6 @@ const ELDStatusLogger = () => {
             strokeWidth: 0.25,
           }
         ),
-        // data line
         Plot.line(cleanedData, {
           x: "time",
           y: "status",
@@ -162,11 +157,9 @@ const ELDStatusLogger = () => {
       height: 150,
     });
 
-    // Clear any previous plot and append new one
     plotRef.current.innerHTML = "";
     plotRef.current.append(plot);
 
-    // Render totals externally
     if (totalsRef.current) {
       totalsRef.current.innerHTML = domain
         .map((status) => {
@@ -178,7 +171,6 @@ const ELDStatusLogger = () => {
         .join("<br>");
     }
 
-    // Cleanup function to remove plot when component unmounts
     return () => {
       plot.remove();
     };
@@ -188,22 +180,19 @@ const ELDStatusLogger = () => {
     event.preventDefault();
     setError(null);
     try {
-      // Format the time string to match local time without timezone conversion
       const localDate = selectedTime.replace("T", " ") + ":00";
 
-      // Create optimistic update in the same format as server response
       const optimisticEntry = {
         status: statusChoicesReverse[newStatus],
         time: localDate,
       };
 
-      // Optimistically update with resolved data
       setData((prevData) => [
         ...prevData,
         {
           ...optimisticEntry,
-          status: newStatus, // Convert to display format
-          time: new Date(localDate), // Convert to Date object
+          status: newStatus,
+          time: new Date(localDate),
         },
       ]);
 
@@ -222,7 +211,6 @@ const ELDStatusLogger = () => {
     if (!Array.isArray(data)) return [];
 
     return data.map((d) => {
-      // Handle both server response format and optimistic update format
       const status =
         typeof d.status === "string"
           ? statusChoices[d.status] || d.status

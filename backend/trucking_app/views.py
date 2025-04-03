@@ -14,6 +14,7 @@ from .serializers import (
 import openrouteservice as ors
 from openrouteservice.directions import directions
 import folium
+import geopy.distance
 
 
 OPENROUTESERVICE_API_KEY = os.getenv('OPENROUTESERVICE_API_KEY')
@@ -26,29 +27,25 @@ class TripViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['POST'])
     def calculate_route(self, request):
         try:
-            # Extract coordinates
             current_location = request.data.get('current_location')  # [lon, lat]
             pickup_location = request.data.get('pickup_location')    # [lon, lat]
             dropoff_location = request.data.get('dropoff_location')  # [lon, lat]
-            
-            # Validate coordinates
+
             if not all([current_location, pickup_location, dropoff_location]):
                 return Response(
                     {"error": "Missing location coordinates"}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
-            # Initialize ORS client
+
             ors_client = ors.Client(key=OPENROUTESERVICE_API_KEY)
             
-            # Define waypoints in ORS format (lon, lat)
+            # Define waypoints in the ORS format (lon, lat)
             coordinates = [
                 current_location,
                 pickup_location,
                 dropoff_location
             ]
-            
-            # Calculate route with driving profile (remove optimize_waypoints)
+
             route = directions(
                 client=ors_client,
                 coordinates=coordinates,
@@ -56,12 +53,10 @@ class TripViewSet(viewsets.ModelViewSet):
                 format='geojson',
                 instructions=True,
             )
-            
-            # Extract route information
+
             total_distance = route['features'][0]['properties']['summary']['distance'] / 1000  # km
             total_duration = route['features'][0]['properties']['summary']['duration'] / 3600  # hours
-            
-            # Create Folium map centered on start point
+
             m = folium.Map(
                 location=[current_location[1], current_location[0]],
                 zoom_start=12,
@@ -78,8 +73,7 @@ class TripViewSet(viewsets.ModelViewSet):
                     'opacity': 0.8
                 }
             ).add_to(m)
-            
-            # Add markers for waypoints
+
             waypoint_names = ['Current Location', 'Pickup', 'Dropoff']
             for i, (coord, name) in enumerate(zip(coordinates, waypoint_names)):
                 folium.Marker(
@@ -90,36 +84,51 @@ class TripViewSet(viewsets.ModelViewSet):
                         icon='truck' if i == 0 else 'industry' if i == 1 else 'flag'
                     )
                 ).add_to(m)
-            
-            # Calculate rest stops (every 4 hours of driving)
+
             rest_stops = []
-            if total_duration > 4:
-                # Get detailed steps for the full route
-                for step in route['features'][0]['properties']['segments'][0]['steps']:
-                    if 'duration' in step and 'distance' in step:
+            if total_duration > 4:  # Only calculate rest stops for trips that is over 4 hours
+                route_coordinates = route['features'][0]['geometry']['coordinates']
+                
+                # Get distance along route for each coordinate
+                distances = []
+                running_dist = 0
+                prev_coord = None
+                
+                for coord in route_coordinates:
+                    if prev_coord:
+                        # This will calculate distance between consecutive points
+                        point1 = (prev_coord[1], prev_coord[0])  # lat, lon
+                        point2 = (coord[1], coord[0])  # lat, lon
+                        segment_dist = geopy.distance.geodesic(point1, point2).kilometers
+                        running_dist += segment_dist
+                        distances.append(running_dist)
+                    else:
+                        distances.append(0)
+                    prev_coord = coord
+                
+                # Calculate rest stop positions (every 4 hours of driving)
+                avg_speed = total_distance / total_duration  # km/h
+                distance_per_rest = 4 * avg_speed  # The distance covered in 4 hours
+                
+                # Find coordinates for rest stops
+                next_rest_distance = distance_per_rest
+                for i, distance in enumerate(distances):
+                    if distance >= next_rest_distance:
                         rest_stops.append({
-                            'location': step['way_points'][-1],
-                            'duration': step['duration'],
-                            'distance': step['distance']
+                            'location': route_coordinates[i],  # [lon, lat]
+                            'distance_km': distance
                         })
-                
-                # Filter to get stops approximately every 4 hours
-                filtered_rest_stops = []
-                cumulative_time = 0
-                rest_threshold = 4 * 3600  # 4 hours in seconds
-                
-                for stop in rest_stops:
-                    cumulative_time += stop['duration']
-                    if cumulative_time >= rest_threshold:
-                        filtered_rest_stops.append(stop)
-                        cumulative_time = 0
-                
-                rest_stops = filtered_rest_stops
-            
-            # Save map to HTML string
+                        next_rest_distance += distance_per_rest
+
+                # Add rest stops to map
+                for i, stop in enumerate(rest_stops):
+                    folium.Marker(
+                        location=[stop['location'][1], stop['location'][0]],  # [lat, lon]
+                        popup=f"<b>Rest Stop {i+1}</b><br>Distance: {stop['distance_km']:.1f} km",
+                        icon=folium.Icon(color='orange', icon='bed')
+                    ).add_to(m)
             map_html = m._repr_html_()
-            
-            # Create new trip record
+
             trip_data = {
                 "start_latitude": current_location[1],
                 "start_longitude": current_location[0],
@@ -143,7 +152,7 @@ class TripViewSet(viewsets.ModelViewSet):
                 'map_html': map_html,
                 'trip_id': trip.id
             })
-        
+    
         except Exception as e:
             return Response(
                 {"error": str(e)}, 
@@ -164,7 +173,6 @@ class StatusLogViewSet(viewsets.ModelViewSet):
             latest_status.end_time = datetime.fromisoformat(request.data['time'].replace('Z', ''))
             latest_status.save()
 
-        # Parse the incoming time string as naive datetime
         try:
             new_time = datetime.fromisoformat(request.data['time'].replace('Z', ''))
         except (ValueError, KeyError):
@@ -196,7 +204,6 @@ class StatusLogViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        # Update request data with naive datetime
         request.data['time'] = new_time
         
         serializer = self.get_serializer(data=request.data)
@@ -206,7 +213,6 @@ class StatusLogViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
     def list(self, request):
-        # Get statuses for the current day
         today = datetime.now().date()
         queryset = self.queryset.filter(
             time__date=today
@@ -324,11 +330,9 @@ class DailyLogViewSet(viewsets.ModelViewSet):
         today = datetime.now().date()
         
         try:
-            # Get the first trip for additional info (if exists)
             daily_logs = DailyLog.objects.filter(date=today).order_by('-id')
             
             if daily_logs.exists():
-                # If multiple exist (shouldn't happen after cleanup), get the most recent
                 daily_log = daily_logs.first()
                 created = False
             else:
@@ -336,13 +340,13 @@ class DailyLogViewSet(viewsets.ModelViewSet):
             report_data = {
                 'name': f'Daily Log for {daily_log.date}',
                 'date': daily_log.date,
-                'vehicle_license_number': 'ABC123',  # From settings
-                'from': 'N/A',  # Could be from settings
+                'vehicle_license_number': 'ABC123',
+                'from': 'N/A',
                 'to': 'N/A',
-                'name_of_carriers': 'Property Carrier',  # Could be from settings
-                'main_office_address': '123 Main St, City, State, Zip',  # From settings
-                'home_terminal_address': '456 Elm St, City, State, Zip',  # From settings
-                'driver_name': 'John Doe',  # From settings,
+                'name_of_carriers': 'Property Carrier',
+                'main_office_address': '123 Main St, City, State, Zip',
+                'home_terminal_address': '456 Elm St, City, State, Zip',
+                'driver_name': 'John Doe',
                 'driving_hours': daily_log.driving_hours,
                 'on_duty_hours': daily_log.on_duty_hours,
                 'off_duty_hours': daily_log.off_duty_hours,
@@ -352,7 +356,7 @@ class DailyLogViewSet(viewsets.ModelViewSet):
                 'trips': [{
                     'start_time': trip.start_time,
                     'end_time': trip.end_time,
-                    'distance': trip.total_distance_km * 0.621371,  # Convert to miles
+                    'distance': trip.total_distance_km * 0.621371,  # Conversion to miles
                     'duration': trip.total_duration_hours
                 } for trip in daily_log.trip.all()]
             }

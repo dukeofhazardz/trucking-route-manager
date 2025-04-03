@@ -207,3 +207,5 @@ templates/pages
 # pycharm
 .idea/
 docker-compose.yml
+Procfile
+railway.toml

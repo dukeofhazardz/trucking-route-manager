@@ -13,9 +13,8 @@ import "leaflet/dist/leaflet.css";
 import currentIconSrc from "../assets/map-pin-icon.svg";
 import "./TripRoutePlanner.css";
 
-const BASE_URL = "http://localhost:8000";
+const BASE_URL = "https://gleaming-compassion-production.up.railway.app";
 
-// Create custom icons for each location type
 const createCustomIcon = (iconSrc, iconColor = null) => {
   const icon = new L.Icon({
     iconUrl: iconSrc,
@@ -97,15 +96,13 @@ const TripRoutePlanner = () => {
         setError(routeData.error);
         return;
       }
-      localStorage.setItem("TripID", routeData.trip_id)
+      localStorage.setItem("TripID", routeData.trip_id);
 
-      // Extract coordinates from GeoJSON response
       const coordinates =
         routeData.route_geojson?.features?.[0]?.geometry?.coordinates?.map(
-          (coord) => [coord[1], coord[0]] // Convert [lon, lat] to [lat, lon]
+          (coord) => [coord[1], coord[0]]
         ) || [];
 
-      // Create waypoints with proper icons
       const waypoints = [
         locations.current && {
           id: "current",
@@ -130,8 +127,7 @@ const TripRoutePlanner = () => {
           name: `Rest Stop ${index + 1}`,
           position: [stop.location[1], stop.location[0]],
           type: "rest",
-          duration: stop.duration,
-          distance: stop.distance,
+          distance_km: stop.distance_km,
         })) || []),
       ].filter(Boolean);
 
@@ -141,7 +137,6 @@ const TripRoutePlanner = () => {
         details: routeData,
       });
 
-      // Fit map to route bounds
       if (mapRef.current && coordinates.length > 0) {
         const map = mapRef.current;
         const bounds = L.latLngBounds(coordinates);
@@ -155,7 +150,6 @@ const TripRoutePlanner = () => {
     }
   };
 
-  // Reset calculated route when locations change
   useEffect(() => {
     setCalculatedRoute({
       waypoints: [],
@@ -215,43 +209,51 @@ const TripRoutePlanner = () => {
             {loading ? <span className="spinner"></span> : "Calculate Route"}
           </button>
 
-          <div className="route-details">
-            <h3>Route Information</h3>
-            <div className="detail-grid">
-              <div className="detail-item">
-                <p>Total Distance</p>
-                <strong>
-                  {calculatedRoute.details?.total_distance_km
-                    ? `${calculatedRoute.details.total_distance_km.toFixed(
-                        2
-                      )} km`
-                    : "--"}
-                </strong>
-              </div>
-              <div className="detail-item">
-                <p>Estimated Duration</p>
-                <strong>
-                  {calculatedRoute.details?.total_duration_hours
-                    ? `${calculatedRoute.details.total_duration_hours.toFixed(
-                        2
-                      )} hrs`
-                    : "--"}
-                </strong>
+          <div className="route-info-container">
+            <div className="route-details">
+              <h3>Route Information</h3>
+              <div className="detail-grid">
+                <div className="detail-item">
+                  <p>Total Distance</p>
+                  <strong>
+                    {calculatedRoute.details?.total_distance_km
+                      ? `${calculatedRoute.details.total_distance_km.toFixed(
+                          2
+                        )} km`
+                      : "--"}
+                  </strong>
+                </div>
+                <div className="detail-item">
+                  <p>Estimated Duration</p>
+                  <strong>
+                    {calculatedRoute.details?.total_duration_hours
+                      ? `${calculatedRoute.details.total_duration_hours.toFixed(
+                          2
+                        )} hrs`
+                      : "--"}
+                  </strong>
+                </div>
               </div>
             </div>
 
-            {calculatedRoute.details?.rest_stops?.length > 0 && (
-              <div className="rest-stops">
-                <h4>Recommended Rest Stops</h4>
-                <ul>
-                  {calculatedRoute.details.rest_stops.map((stop, index) => (
-                    <li key={index}>
-                      Stop {index + 1}: {(stop.duration / 3600).toFixed(2)} hrs
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <div className="rest-stops">
+              <h3>Recommended Rest Stops</h3>
+              {calculatedRoute.details ? (
+                calculatedRoute.details.rest_stops?.length > 0 ? (
+                  <ul>
+                    {calculatedRoute.details.rest_stops.map((stop, index) => (
+                      <li key={index}>
+                        Stop {index + 1}: {stop.distance_km?.toFixed(2)} km
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>No rest stops needed for this route</p>
+                )
+              ) : (
+                <p>--</p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -318,15 +320,8 @@ const TripRoutePlanner = () => {
                       <strong>{wp.name}</strong>
                       <div>Lat: {wp.position[0].toFixed(6)}</div>
                       <div>Lon: {wp.position[1].toFixed(6)}</div>
-                      {wp.duration && (
-                        <div>
-                          Duration: {(wp.duration / 3600).toFixed(2)} hrs
-                        </div>
-                      )}
-                      {wp.distance && (
-                        <div>
-                          Distance: {(wp.distance / 1000).toFixed(2)} km
-                        </div>
+                      {wp.distance_km && (
+                        <div>Distance: {wp.distance_km.toFixed(2)} km</div>
                       )}
                     </Popup>
                   </Marker>

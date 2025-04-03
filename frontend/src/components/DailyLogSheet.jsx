@@ -4,7 +4,7 @@ import * as Plot from "@observablehq/plot";
 import axios from "axios";
 import "./DailyLogSheet.css";
 
-const BASE_URL = "http://localhost:8000";
+const BASE_URL = "https://gleaming-compassion-production.up.railway.app";
 
 const DailyLogSheet = () => {
   const plotRef = useRef(null);
